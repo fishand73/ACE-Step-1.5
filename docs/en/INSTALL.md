@@ -436,6 +436,8 @@ start_api_server_rocm.bat
 
 See [`requirements-rocm.txt`](../../requirements-rocm.txt) for detailed ROCm 7.2 installation steps.
 
+See [ACE-Step1.5-Rocm-Manual-Windows.md](ACE-Step1.5-Rocm-Manual-Windows.md) for a full step-by-step Windows ROCm setup guide.
+
 ### Linux - ROCm 6.0+ (Python 3.11 or 3.12)
 
 ```bash
@@ -462,6 +464,16 @@ If you see "No GPU detected, running on CPU" with an AMD GPU:
 1. Run the diagnostic tool: `python scripts/check_gpu.py`
 2. For RDNA3 GPUs, set `HSA_OVERRIDE_GFX_VERSION`:
 
+**Windows (Command Prompt):**
+
+| GPU | Value |
+|-----|-------|
+| RX 7900 XT/XTX, RX 9070 XT | `set HSA_OVERRIDE_GFX_VERSION=11.0.0` |
+| RX 7800 XT, RX 7700 XT | `set HSA_OVERRIDE_GFX_VERSION=11.0.1` |
+| RX 7600 | `set HSA_OVERRIDE_GFX_VERSION=11.0.2` |
+
+**Linux:**
+
 | GPU | Value |
 |-----|-------|
 | RX 7900 XT/XTX, RX 9070 XT | `export HSA_OVERRIDE_GFX_VERSION=11.0.0` |
@@ -470,6 +482,10 @@ If you see "No GPU detected, running on CPU" with an AMD GPU:
 
 3. On Windows, use `start_gradio_ui_rocm.bat` / `start_api_server_rocm.bat` which set required environment variables automatically.
 4. Verify ROCm installation: `rocm-smi` should list your GPU.
+
+### Windows (detailed manual)
+
+See [ACE-Step1.5-Rocm-Manual-Windows.md](ACE-Step1.5-Rocm-Manual-Windows.md) for a detailed step-by-step Windows ROCm setup guide, including HSA_OVERRIDE_GFX_VERSION values by GPU, troubleshooting, and manual launch instructions.
 
 ### Linux (cachy-os / RDNA4)
 

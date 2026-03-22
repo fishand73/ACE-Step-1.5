@@ -328,7 +328,35 @@ set LM_MODEL_PATH=--lm_model_path acestep-5Hz-lm-1.7B
 
 > ⚠️ `uv run acestep` 会安装 CUDA PyTorch wheels，可能覆盖已有的 ROCm 环境。
 
-### 推荐工作流
+### Windows - ROCm 7.2（需要 Python 3.12）
+
+**重要：** Windows 上的 AMD ROCm 7.2 需要 **Python 3.12**（AMD 官方仅提供 Python 3.12 的 Windows wheels）。
+
+```batch
+REM 1. 确认已安装 Python 3.12
+python --version   REM 应显示 Python 3.12.x
+
+REM 2. 创建并激活虚拟环境
+python -m venv venv_rocm
+venv_rocm\Scripts\activate
+
+REM 3. 按照 requirements-rocm.txt 中的说明安装 ROCm SDK 和 PyTorch wheels
+REM    此步骤将从 AMD 的仓库安装 ROCm SDK 和 PyTorch
+
+REM 4. 安装依赖
+pip install -r requirements-rocm.txt
+
+REM 5. 使用 ROCm 专用启动器运行
+start_gradio_ui_rocm.bat
+REM 或者
+start_api_server_rocm.bat
+```
+
+详见 [`requirements-rocm.txt`](../../requirements-rocm.txt) 中 ROCm 7.2 完整安装步骤。
+
+详细 Windows 安装指南请参阅 [ACE-Step1.5-Rocm-Manual-Windows.md](../en/ACE-Step1.5-Rocm-Manual-Windows.md)。
+
+### Linux - ROCm 6.0+
 
 ```bash
 # 1. 创建并激活虚拟环境
@@ -345,6 +373,8 @@ pip install -e .
 python -m acestep.acestep_v15_pipeline --port 7680
 ```
 
+> **注意：** AMD ROCm GPU 上不支持 `torchcodec`（依赖 CUDA）。ACE-Step 会自动使用 `soundfile` 作为备选方案处理音频 I/O，在 ROCm 平台上可提供完整功能。
+
 ### GPU 检测问题排查
 
 如果显示 "No GPU detected, running on CPU"：
@@ -352,14 +382,24 @@ python -m acestep.acestep_v15_pipeline --port 7680
 1. 运行诊断工具：`python scripts/check_gpu.py`
 2. RDNA3 GPU 设置 `HSA_OVERRIDE_GFX_VERSION`：
 
+**Windows（在命令提示符中设置）：**
+
+| GPU | 值 |
+|-----|---|
+| RX 7900 XT/XTX, RX 9070 XT | `set HSA_OVERRIDE_GFX_VERSION=11.0.0` |
+| RX 7800 XT, RX 7700 XT | `set HSA_OVERRIDE_GFX_VERSION=11.0.1` |
+| RX 7600 | `set HSA_OVERRIDE_GFX_VERSION=11.0.2` |
+
+**Linux：**
+
 | GPU | 值 |
 |-----|---|
 | RX 7900 XT/XTX, RX 9070 XT | `export HSA_OVERRIDE_GFX_VERSION=11.0.0` |
 | RX 7800 XT, RX 7700 XT | `export HSA_OVERRIDE_GFX_VERSION=11.0.1` |
 | RX 7600 | `export HSA_OVERRIDE_GFX_VERSION=11.0.2` |
 
-3. Windows 上使用 `start_gradio_ui_rocm.bat` / `start_api_server_rocm.bat`
-4. 验证 ROCm 安装：`rocm-smi`
+3. Windows 上使用 `start_gradio_ui_rocm.bat` / `start_api_server_rocm.bat`，这些脚本会自动设置所需的环境变量。
+4. 验证 ROCm 安装：`rocm-smi` 应能列出你的 GPU。
 
 ### Linux（cachy-os / RDNA4）
 
