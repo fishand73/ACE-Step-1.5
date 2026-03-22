@@ -572,6 +572,114 @@ class InitServiceMixinTests(unittest.TestCase):
 
         mask_cat.argsort.assert_called_once_with(dim=1, descending=True, stable=True)
 
+    @staticmethod
+    def _make_vqpy_import_raiser(error_message: str):
+        """Return an ``importlib.import_module`` side-effect that raises for vector_quantize_pytorch."""
+        def _fake_import(name):
+            if name == "vector_quantize_pytorch":
+                raise ImportError(error_message)
+            return importlib.import_module(name)
+        return _fake_import
+
+    def test_rocm_windows_vqpy_workaround_stubs_module_on_windows_rocm(self):
+        """It inserts a stub for vector_quantize_pytorch on Windows ROCm when torch.distributed is broken."""
+        host = _Host(project_root="K:/fake_root", device="cpu")
+        vqpy_key = "vector_quantize_pytorch"
+
+        saved = sys.modules.pop(vqpy_key, None)
+        try:
+            with patch("sys.platform", "win32"), \
+                    patch("acestep.gpu_config.is_rocm_available", return_value=True), \
+                    patch.object(
+                        INIT_SERVICE_LOADER_MODULE.importlib,
+                        "import_module",
+                        side_effect=self._make_vqpy_import_raiser(
+                            "cannot import name 'group' from 'torch.distributed'"
+                        ),
+                    ):
+                host._apply_rocm_windows_vqpy_workaround()
+
+            self.assertIn(vqpy_key, sys.modules)
+            stub = sys.modules[vqpy_key]
+            self.assertIsInstance(stub, types.ModuleType)
+            self.assertEqual(stub.__name__, vqpy_key)
+        finally:
+            if saved is not None:
+                sys.modules[vqpy_key] = saved
+            else:
+                sys.modules.pop(vqpy_key, None)
+
+    def test_rocm_windows_vqpy_workaround_noop_on_non_windows(self):
+        """It does nothing on non-Windows platforms (e.g. Linux)."""
+        host = _Host(project_root="K:/fake_root", device="cpu")
+        vqpy_key = "vector_quantize_pytorch"
+
+        saved = sys.modules.pop(vqpy_key, None)
+        try:
+            with patch("sys.platform", "linux"), \
+                    patch("acestep.gpu_config.is_rocm_available", return_value=True):
+                host._apply_rocm_windows_vqpy_workaround()
+
+            self.assertNotIn(vqpy_key, sys.modules)
+        finally:
+            if saved is not None:
+                sys.modules[vqpy_key] = saved
+
+    def test_rocm_windows_vqpy_workaround_noop_when_not_rocm(self):
+        """It does nothing on Windows CUDA (non-ROCm) builds."""
+        host = _Host(project_root="K:/fake_root", device="cpu")
+        vqpy_key = "vector_quantize_pytorch"
+
+        saved = sys.modules.pop(vqpy_key, None)
+        try:
+            with patch("sys.platform", "win32"), \
+                    patch("acestep.gpu_config.is_rocm_available", return_value=False):
+                host._apply_rocm_windows_vqpy_workaround()
+
+            self.assertNotIn(vqpy_key, sys.modules)
+        finally:
+            if saved is not None:
+                sys.modules[vqpy_key] = saved
+
+    def test_rocm_windows_vqpy_workaround_noop_for_unrelated_import_error(self):
+        """It does not stub the module when the ImportError is unrelated to torch.distributed."""
+        host = _Host(project_root="K:/fake_root", device="cpu")
+        vqpy_key = "vector_quantize_pytorch"
+
+        saved = sys.modules.pop(vqpy_key, None)
+        try:
+            with patch("sys.platform", "win32"), \
+                    patch("acestep.gpu_config.is_rocm_available", return_value=True), \
+                    patch.object(
+                        INIT_SERVICE_LOADER_MODULE.importlib,
+                        "import_module",
+                        side_effect=self._make_vqpy_import_raiser("No module named 'einops'"),
+                    ):
+                host._apply_rocm_windows_vqpy_workaround()
+
+            self.assertNotIn(vqpy_key, sys.modules)
+        finally:
+            if saved is not None:
+                sys.modules[vqpy_key] = saved
+
+    def test_rocm_windows_vqpy_workaround_noop_when_already_in_sys_modules(self):
+        """It skips the check entirely when vector_quantize_pytorch is already cached."""
+        host = _Host(project_root="K:/fake_root", device="cpu")
+        vqpy_key = "vector_quantize_pytorch"
+        existing_stub = types.ModuleType(vqpy_key)
+        saved = sys.modules.get(vqpy_key)
+        sys.modules[vqpy_key] = existing_stub
+        try:
+            with patch("sys.platform", "win32"), \
+                    patch("acestep.gpu_config.is_rocm_available", return_value=True):
+                host._apply_rocm_windows_vqpy_workaround()
+
+            self.assertIs(sys.modules[vqpy_key], existing_stub)
+        finally:
+            if saved is not None:
+                sys.modules[vqpy_key] = saved
+            else:
+                sys.modules.pop(vqpy_key, None)
 
     def test_apply_dit_quantization_filters_to_decoder_linear_layers(self):
         """It quantizes only decoder-side linear layers."""

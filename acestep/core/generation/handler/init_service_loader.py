@@ -2,6 +2,8 @@
 
 import importlib
 import os
+import sys
+import types
 from typing import Optional
 
 import torch
@@ -111,6 +113,51 @@ class InitServiceLoaderMixin(InitServiceLoaderComponentsMixin):
         quantize_(self.model, quant_config, filter_fn=_dit_filter_fn)
         logger.info(f"[initialize_service] DiT quantized with: {quantization}")
 
+    def _apply_rocm_windows_vqpy_workaround(self) -> None:
+        """Stub vector_quantize_pytorch on Windows ROCm to bypass torch.distributed incompatibility.
+
+        On Windows ROCm builds, ``torch.distributed`` is a stub that does not export ``group``
+        or ``ReduceOp``. ``vector_quantize_pytorch`` unconditionally imports these symbols, causing
+        an ``ImportError`` during ``transformers`` import validation (``check_imports``).  The
+        package is listed in the model's source file but is never called at runtime, so inserting a
+        lightweight placeholder module into ``sys.modules`` is safe and sufficient.
+
+        This method is a no-op on all non-Windows or non-ROCm platforms.  Any ``ImportError``
+        that is unrelated to the known ``torch.distributed`` / ``group`` issue is silently
+        ignored so that normal import-failure handling in the caller is unaffected.
+
+        Returns:
+            None
+        """
+        if sys.platform != "win32":
+            return
+
+        from acestep.gpu_config import is_rocm_available
+
+        if not is_rocm_available():
+            return
+
+        if "vector_quantize_pytorch" in sys.modules:
+            return
+
+        try:
+            importlib.import_module("vector_quantize_pytorch")
+        except ImportError as exc:
+            error_msg = str(exc)
+            if "group" not in error_msg and "torch.distributed" not in error_msg:
+                # Not the known Windows ROCm issue; leave normal flow to handle it.
+                return
+            stub = types.ModuleType("vector_quantize_pytorch")
+            sys.modules["vector_quantize_pytorch"] = stub
+            logger.warning(
+                "[initialize_service] Windows ROCm: vector_quantize_pytorch failed to import "
+                "because torch.distributed is a stub that does not export 'group'. "
+                "A placeholder stub has been inserted so that transformers import validation "
+                "passes. vector_quantize_pytorch is not used in ACE-Step inference. "
+                "Error: {}",
+                exc,
+            )
+
     def _load_main_model_from_checkpoint(
         self,
         *,
@@ -155,6 +202,8 @@ class InitServiceLoaderMixin(InitServiceLoaderComponentsMixin):
             attn_candidates.append("sdpa")
         if "eager" not in attn_candidates:
             attn_candidates.append("eager")
+
+        self._apply_rocm_windows_vqpy_workaround()
 
         last_attn_error = None
         self.model = None
